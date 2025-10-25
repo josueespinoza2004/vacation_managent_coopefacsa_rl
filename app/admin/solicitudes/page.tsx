@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/layout/sidebar"
 import { RequestCard } from "@/components/requests/request-card"
 import { ApproveDialog } from "@/components/admin/approve-dialog"
@@ -63,7 +63,7 @@ const mockRequests: VacationRequest[] = [
 ]
 
 export default function SolicitudesPage() {
-  const [requests, setRequests] = useState(mockRequests)
+  const [requests, setRequests] = useState<VacationRequest[]>(mockRequests)
   const [approveDialogOpen, setApproveDialogOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<VacationRequest | null>(null)
 
@@ -75,19 +75,71 @@ export default function SolicitudesPage() {
     }
   }
 
-  const handleConfirmApprove = (days: number) => {
-    if (selectedRequest) {
-      setRequests((prev) =>
-        prev.map((req) =>
-          req.id === selectedRequest.id ? { ...req, status: "approved" as const, approvedDays: days } : req,
-        ),
-      )
+  const handleConfirmApprove = async (days: number) => {
+    if (!selectedRequest) return;
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch('/api/vacation_requests', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ id: selectedRequest.id, status: 'approved' }),
+      });
+      if (!res.ok) {
+        console.error('Error aprobando solicitud', await res.text());
+        return;
+      }
+      const updated = await res.json();
+      setRequests((prev) => prev.map((req) => (req.id === updated.id ? { ...req, status: updated.status, approvedDays: Number(updated.days) } : req)));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setApproveDialogOpen(false);
+      setSelectedRequest(null);
     }
   }
 
-  const handleReject = (id: string) => {
-    setRequests((prev) => prev.map((req) => (req.id === id ? { ...req, status: "rejected" as const } : req)))
+  const handleReject = async (id: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch('/api/vacation_requests', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ id, status: 'rejected' }),
+      });
+      if (!res.ok) {
+        console.error('Error rechazando solicitud', await res.text());
+        return;
+      }
+      const updated = await res.json();
+      setRequests((prev) => prev.map((req) => (req.id === updated.id ? { ...req, status: updated.status } : req)));
+    } catch (err) {
+      console.error(err);
+    }
   }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/vacation_requests');
+        if (!res.ok) return;
+        const rs = await res.json();
+        const mapped: VacationRequest[] = rs.map((r: any) => ({
+          id: r.id,
+          employeeName: r.employee_name || 'Sin Nombre',
+          position: r.position || '',
+          requestedDays: Number(r.days),
+          startDate: r.start_date,
+          endDate: r.end_date,
+          status: r.status,
+          accumulatedDays: 0,
+          approvedDays: r.status === 'approved' ? Number(r.days) : undefined,
+        }));
+        setRequests(mapped);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
 
   const pendingRequests = requests.filter((r) => r.status === "pending")
   const approvedRequests = requests.filter((r) => r.status === "approved")

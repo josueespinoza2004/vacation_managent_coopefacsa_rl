@@ -1,5 +1,10 @@
 -- Schema for coopefacsa vacation system
 -- Tables: employees, vacation_requests, attendance
+-- Ensure pgcrypto for gen_random_uuid
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Schema for coopefacsa vacation system
+-- Tables: employees, departments, vacation_requests, attendance
 
 CREATE TABLE IF NOT EXISTS employees (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,6 +18,38 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at timestamptz DEFAULT now()
 );
 
+-- Departments table (optional normalized table)
+CREATE TABLE IF NOT EXISTS departments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text UNIQUE NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Populate departments from existing employees.department (no-op if none)
+INSERT INTO departments (name)
+SELECT DISTINCT department FROM employees WHERE department IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
+-- Add department_id column to employees if missing and populate it by joining departments
+ALTER TABLE employees
+  ADD COLUMN IF NOT EXISTS department_id uuid NULL;
+
+UPDATE employees e
+SET department_id = d.id
+FROM departments d
+WHERE e.department IS NOT NULL AND e.department = d.name;
+
+-- Add foreign key constraint linking employees.department_id -> departments.id if not exists
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fk_department'
+  ) THEN
+    ALTER TABLE employees
+      ADD CONSTRAINT fk_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
+  END IF;
+END$$;
+
 CREATE TABLE IF NOT EXISTS vacation_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -20,8 +57,12 @@ CREATE TABLE IF NOT EXISTS vacation_requests (
   end_date date NOT NULL,
   days numeric NOT NULL,
   status text NOT NULL DEFAULT 'pending',
+  type text NOT NULL DEFAULT 'request', -- 'request' | 'birthday' | 'adjustment'
   reason text,
-  created_at timestamptz DEFAULT now()
+  requested_by uuid NULL,
+  decided_by uuid NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS attendance (
@@ -37,3 +78,29 @@ CREATE TABLE IF NOT EXISTS attendance (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_vacation_employee ON vacation_requests(employee_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id);
+
+-- Users table and link from employees (optional user accounts)
+CREATE TABLE IF NOT EXISTS users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text NOT NULL UNIQUE,
+  password_hash text,
+  name text,
+  role text NOT NULL DEFAULT 'user',
+  created_at timestamptz DEFAULT now()
+);
+
+-- Add user_id column to employees (nullable) and FK to users
+ALTER TABLE employees
+  ADD COLUMN IF NOT EXISTS user_id uuid NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fk_employee_user'
+  ) THEN
+    ALTER TABLE employees
+      ADD CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+END$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_user_id ON employees(user_id) WHERE user_id IS NOT NULL;

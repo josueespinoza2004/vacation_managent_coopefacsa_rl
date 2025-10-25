@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar, Plus } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { VacationRequestForm } from "@/components/employee/vacation-request-form"
 
 interface Request {
@@ -57,6 +57,49 @@ const mockRequests: Request[] = [
 
 export default function SolicitudesPage() {
   const [requestFormOpen, setRequestFormOpen] = useState(false)
+  const [employeeId, setEmployeeId] = useState<string | null>(null)
+  const [availableDays, setAvailableDays] = useState<number>(12.5)
+  const [requests, setRequests] = useState<Request[]>(mockRequests)
+
+  useEffect(() => {
+    // fetch linked employee for current user and then load requests and balance
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) return;
+        const empRes = await fetch('/api/auth/employee', { headers: { Authorization: `Bearer ${token}` } });
+        if (!empRes.ok) return;
+        const empJson = await empRes.json();
+        const emp = empJson?.employee;
+        if (!emp) return;
+        setEmployeeId(emp.id);
+        // load balance
+        const balRes = await fetch(`/api/vacations/balance?employee_id=${emp.id}`);
+        if (balRes.ok) {
+          const b = await balRes.json();
+          setAvailableDays(Number(b.available ?? 0));
+        }
+        // load requests
+        const reqRes = await fetch(`/api/vacation_requests?employee_id=${emp.id}`);
+        if (reqRes.ok) {
+          const rs = await reqRes.json();
+          // map to local Request shape
+          const mapped: Request[] = rs.map((r: any) => ({
+            id: r.id,
+            startDate: r.start_date,
+            endDate: r.end_date,
+            days: Number(r.days),
+            status: r.status,
+            requestDate: r.created_at,
+            approvedDays: r.status === 'approved' ? Number(r.days) : undefined,
+          }));
+          setRequests(mapped);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
 
   const getStatusBadge = (status: Request["status"]) => {
     const variants = {
@@ -68,8 +111,44 @@ export default function SolicitudesPage() {
     return <Badge className={variant.className}>{variant.label}</Badge>
   }
 
-  const handleSubmitRequest = (data: { startDate: string; endDate: string; days: number }) => {
-    console.log("[v0] Nueva solicitud:", data)
+  const handleSubmitRequest = async (data: { startDate: string; endDate: string; days: number }) => {
+    try {
+      if (!employeeId) {
+        console.error('Empleado no vinculado.');
+        return;
+      }
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch('/api/vacation_requests', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ employee_id: employeeId, start_date: data.startDate, end_date: data.endDate, days: data.days }),
+      });
+      if (!res.ok) {
+        console.error('Error creando solicitud', await res.text());
+        return;
+      }
+      const created = await res.json();
+      // append to UI list
+      setRequests((prev) => [
+        {
+          id: created.id,
+          startDate: created.start_date,
+          endDate: created.end_date,
+          days: Number(created.days),
+          status: created.status,
+          requestDate: created.created_at,
+        },
+        ...prev,
+      ]);
+      // refresh balance
+      const balRes = await fetch(`/api/vacations/balance?employee_id=${employeeId}`);
+      if (balRes.ok) {
+        const b = await balRes.json();
+        setAvailableDays(Number(b.available ?? 0));
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   return (
@@ -92,7 +171,7 @@ export default function SolicitudesPage() {
           </div>
 
           <div className="space-y-4">
-            {mockRequests.map((request) => (
+            {requests.map((request) => (
               <Card key={request.id}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
@@ -131,7 +210,7 @@ export default function SolicitudesPage() {
       <VacationRequestForm
         open={requestFormOpen}
         onOpenChange={setRequestFormOpen}
-        accumulatedDays={12.5}
+        accumulatedDays={availableDays}
         onSubmit={handleSubmitRequest}
       />
     </div>

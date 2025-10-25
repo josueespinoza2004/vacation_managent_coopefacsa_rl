@@ -24,7 +24,23 @@ export default function AdminDashboard() {
   ])
 
   const handleAssignLeave = (id: string) => {
-    setBirthdays((prev) => prev.map((b) => (b.id === id ? { ...b, hasLeaveAssigned: true } : b)))
+    // call API to assign birthday leave; optimistic update
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/vacations/assign-birthday', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ employee_id: id })
+        });
+        if (res.ok) {
+          setBirthdays((prev) => prev.map((b) => (b.id === id ? { ...b, hasLeaveAssigned: true } : b)))
+        } else {
+          console.error('Error assigning birthday leave', await res.text())
+        }
+      } catch (err) {
+        console.error('Error assigning birthday leave', err)
+      }
+    })();
   }
 
   const handleMarkAsRead = (id: string) => {
