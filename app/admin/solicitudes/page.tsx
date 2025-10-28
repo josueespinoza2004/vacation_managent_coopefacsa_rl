@@ -18,52 +18,10 @@ interface VacationRequest {
   approvedDays?: number
 }
 
-const mockRequests: VacationRequest[] = [
-  {
-    id: "1",
-    employeeName: "Juan Francisco Moreno",
-    position: "Oficial de Crédito",
-    requestedDays: 5,
-    startDate: "10/05/2025",
-    endDate: "14/05/2025",
-    status: "pending",
-    accumulatedDays: 12.5,
-  },
-  {
-    id: "2",
-    employeeName: "Norgen Antonio Polanco",
-    position: "Oficial de Crédito",
-    requestedDays: 3,
-    startDate: "20/05/2025",
-    endDate: "22/05/2025",
-    status: "pending",
-    accumulatedDays: 9.83,
-  },
-  {
-    id: "3",
-    employeeName: "Esther Vizcaíno",
-    position: "Directora RRHH",
-    requestedDays: 7,
-    startDate: "01/06/2025",
-    endDate: "07/06/2025",
-    status: "approved",
-    accumulatedDays: 15.0,
-    approvedDays: 7,
-  },
-  {
-    id: "4",
-    employeeName: "Pedro Damián Salgado",
-    position: "Analista Financiero",
-    requestedDays: 4,
-    startDate: "15/05/2025",
-    endDate: "18/05/2025",
-    status: "rejected",
-    accumulatedDays: 8.0,
-  },
-]
+// requests will be fetched from the API on load
 
 export default function SolicitudesPage() {
-  const [requests, setRequests] = useState<VacationRequest[]>(mockRequests)
+  const [requests, setRequests] = useState<VacationRequest[]>([])
   const [approveDialogOpen, setApproveDialogOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<VacationRequest | null>(null)
 

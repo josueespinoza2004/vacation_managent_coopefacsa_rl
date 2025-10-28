@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface VacationEvent {
   id: string
@@ -13,25 +13,12 @@ interface VacationEvent {
   days: number
 }
 
-const mockEvents: VacationEvent[] = [
-  {
-    id: "1",
-    employeeName: "Juan Pérez",
-    startDate: new Date(2025, 9, 10),
-    endDate: new Date(2025, 9, 20),
-    days: 10,
-  },
-  {
-    id: "2",
-    employeeName: "María González",
-    startDate: new Date(2025, 9, 15),
-    endDate: new Date(2025, 9, 18),
-    days: 3,
-  },
-]
+// events loaded from API
+const initialEvents: VacationEvent[] = []
 
 export function VacationCalendar() {
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 9, 1)) // October 2025
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [events, setEvents] = useState<VacationEvent[]>(initialEvents)
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
 
@@ -62,14 +49,37 @@ export function VacationCalendar() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
   }
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+        const res = await fetch('/api/vacation_requests', { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+        if (!res.ok) return
+        const rows = await res.json()
+        // filter approved requests and map to events
+        const approved = (rows || []).filter((r: any) => r.status === 'approved')
+        const evts: VacationEvent[] = approved.map((r: any) => ({
+          id: r.id,
+          employeeName: r.employee_name ?? r.employee_id,
+          startDate: new Date(r.start_date),
+          endDate: new Date(r.end_date),
+          days: Number(r.days),
+        }))
+        setEvents(evts)
+      } catch (err) {
+        console.error('Error loading vacation events', err)
+      }
+    })()
+  }, [])
+
   const hasVacation = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    return mockEvents.some((event) => date >= event.startDate && date <= event.endDate)
+    return events.some((event) => date >= event.startDate && date <= event.endDate)
   }
 
   const getVacationEvent = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    return mockEvents.find((event) => date >= event.startDate && date <= event.endDate)
+    return events.find((event) => date >= event.startDate && date <= event.endDate)
   }
 
   return (

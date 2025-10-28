@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/layout/sidebar"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,32 +12,40 @@ import { VacationRequestForm } from "@/components/employee/vacation-request-form
 
 export default function EmployeeDashboard() {
   const [requestFormOpen, setRequestFormOpen] = useState(false)
+  const [employeeData, setEmployeeData] = useState<any | null>(null)
+  const [recentRequests, setRecentRequests] = useState<Array<any>>([])
+  const [availableDays, setAvailableDays] = useState<number>(0)
 
-  const employeeData = {
-    name: "Juan Francisco Moreno",
-    position: "Oficial de Crédito",
-    accumulatedDays: 12.5,
-    usedDays: 7.5,
-    pendingRequests: 1,
-    monthlyAccumulation: 2.5,
-  }
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) return;
+        const empRes = await fetch('/api/auth/employee', { headers: { Authorization: `Bearer ${token}` } });
+        if (!empRes.ok) return;
+        const empJson = await empRes.json();
+        const emp = empJson?.employee;
+        if (!emp) return;
+        setEmployeeData(emp);
 
-  const recentRequests = [
-    {
-      id: "1",
-      startDate: "10/05/2025",
-      endDate: "14/05/2025",
-      days: 5,
-      status: "pending" as const,
-    },
-    {
-      id: "2",
-      startDate: "01/04/2025",
-      endDate: "03/04/2025",
-      days: 2.5,
-      status: "approved" as const,
-    },
-  ]
+        // balance
+        const balRes = await fetch(`/api/vacations/balance?employee_id=${emp.id}`);
+        if (balRes.ok) {
+          const b = await balRes.json();
+          setAvailableDays(Number(b.available ?? 0));
+        }
+
+        // recent requests (limit 5)
+        const reqRes = await fetch(`/api/vacation_requests?employee_id=${emp.id}`);
+        if (reqRes.ok) {
+          const rs = await reqRes.json();
+          setRecentRequests(rs.slice(0, 5));
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [])
 
   const getStatusBadge = (status: "pending" | "approved" | "rejected") => {
     const variants = {
@@ -65,29 +73,29 @@ export default function EmployeeDashboard() {
         <div className="mx-auto max-w-5xl">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Bienvenido, {employeeData.name.split(" ")[0]}</h1>
-            <p className="mt-2 text-muted-foreground">{employeeData.position}</p>
+            <h1 className="text-3xl font-bold text-foreground">Bienvenid@ , {employeeData ? employeeData.name.split(" ")[0] : 'colaborador'}</h1>
+            <p className="mt-2 text-muted-foreground">{employeeData?.position}</p>
           </div>
 
           {/* Stats Grid */}
           <div className="mb-8 grid gap-6 md:grid-cols-3">
             <StatCard
               title="Días Acumulados"
-              value={employeeData.accumulatedDays}
-              subtitle={`+${employeeData.monthlyAccumulation} días/mes`}
+              value={employeeData?.accumulatedDays ?? employeeData?.accumulatedDays ?? 0}
+              subtitle={`+${employeeData?.monthlyAccumulation ?? employeeData?.monthly_rate ?? 2.5} días/mes`}
               icon={Calendar}
               variant="success"
             />
             <StatCard
               title="Días Utilizados"
-              value={employeeData.usedDays}
+              value={employeeData?.usedDays ?? employeeData?.used_days ?? 0}
               subtitle="Este año"
               icon={Clock}
               variant="default"
             />
             <StatCard
               title="Solicitudes Pendientes"
-              value={employeeData.pendingRequests}
+              value={employeeData?.pendingRequests ?? employeeData?.pendingDays ?? 0}
               subtitle="En revisión"
               icon={FileText}
               variant="warning"
@@ -99,9 +107,9 @@ export default function EmployeeDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">¿Necesitas tomar vacaciones?</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Tienes {employeeData.accumulatedDays} días disponibles para solicitar
-                  </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Tienes {availableDays} días disponibles para solicitar
+                    </p>
                 </div>
                 <Button
                   className="bg-accent text-accent-foreground hover:bg-accent/90"
@@ -128,7 +136,7 @@ export default function EmployeeDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentRequests.map((request) => (
+                {recentRequests.map((request: any) => (
                   <div
                     key={request.id}
                     className="flex items-center justify-between rounded-lg border border-border p-4"
@@ -139,9 +147,9 @@ export default function EmployeeDashboard() {
                       </div>
                       <div>
                         <p className="font-medium text-foreground">
-                          {request.startDate} - {request.endDate}
+                          {request.start_date ?? request.startDate} - {request.end_date ?? request.endDate}
                         </p>
-                        <p className="text-sm text-muted-foreground">{request.days} días solicitados</p>
+                        <p className="text-sm text-muted-foreground">{Number(request.days)} días solicitados</p>
                       </div>
                     </div>
                     {getStatusBadge(request.status)}
@@ -156,7 +164,8 @@ export default function EmployeeDashboard() {
       <VacationRequestForm
         open={requestFormOpen}
         onOpenChange={setRequestFormOpen}
-        accumulatedDays={employeeData.accumulatedDays}
+        // use availableDays (from balance) or fallback to 0 to avoid reading properties of null
+        accumulatedDays={employeeData?.accumulatedDays ?? availableDays ?? 0}
         onSubmit={handleSubmitRequest}
       />
     </div>

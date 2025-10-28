@@ -18,48 +18,13 @@ interface Request {
   approvedDays?: number
 }
 
-const mockRequests: Request[] = [
-  {
-    id: "1",
-    startDate: "10/05/2025",
-    endDate: "14/05/2025",
-    days: 5,
-    status: "pending",
-    requestDate: "01/05/2025",
-  },
-  {
-    id: "2",
-    startDate: "01/04/2025",
-    endDate: "03/04/2025",
-    days: 2.5,
-    status: "approved",
-    requestDate: "20/03/2025",
-    approvedDays: 2.5,
-  },
-  {
-    id: "3",
-    startDate: "15/03/2025",
-    endDate: "18/03/2025",
-    days: 4,
-    status: "approved",
-    requestDate: "01/03/2025",
-    approvedDays: 3,
-  },
-  {
-    id: "4",
-    startDate: "10/02/2025",
-    endDate: "12/02/2025",
-    days: 3,
-    status: "rejected",
-    requestDate: "25/01/2025",
-  },
-]
+// initial empty list — will be loaded from the API for the current user
 
 export default function SolicitudesPage() {
   const [requestFormOpen, setRequestFormOpen] = useState(false)
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [availableDays, setAvailableDays] = useState<number>(12.5)
-  const [requests, setRequests] = useState<Request[]>(mockRequests)
+  const [requests, setRequests] = useState<Request[]>([])
 
   useEffect(() => {
     // fetch linked employee for current user and then load requests and balance

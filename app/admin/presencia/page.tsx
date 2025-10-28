@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Calendar } from "@/components/ui/calendar"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface AttendanceRecord {
   id: string
@@ -15,39 +15,25 @@ interface AttendanceRecord {
   checkOut?: string
 }
 
-const mockAttendance: AttendanceRecord[] = [
-  {
-    id: "1",
-    name: "Diego Jovial",
-    position: "Desarrollador",
-    status: "present",
-    checkIn: "08:15 AM",
-    checkOut: "05:30 PM",
-  },
-  {
-    id: "2",
-    name: "Diego García García",
-    position: "Analista",
-    status: "present",
-    checkIn: "08:00 AM",
-  },
-  {
-    id: "3",
-    name: "Fran Herrera Díaz",
-    position: "Gerente",
-    status: "vacation",
-  },
-  {
-    id: "4",
-    name: "Samuel Fernández",
-    position: "Contador",
-    status: "present",
-    checkIn: "08:30 AM",
-  },
-]
+// attendance will be derived from employees/attendance API — start empty and fetch
 
 export default function PresenciaPage() {
   const [date, setDate] = useState<Date | undefined>(new Date())
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string; position?: string }>>([])
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const res = await fetch('/api/employees', { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+        if (!res.ok) return;
+        const rows = await res.json();
+        setEmployees(rows);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [])
 
   const getStatusBadge = (status: AttendanceRecord["status"]) => {
     const variants = {
@@ -60,8 +46,10 @@ export default function PresenciaPage() {
     return <Badge className={variant.className}>{variant.label}</Badge>
   }
 
-  const presentCount = mockAttendance.filter((a) => a.status === "present").length
-  const totalCount = mockAttendance.length
+  // For now we mark all loaded employees as 'present' in the list —
+  // this removes the static mocks and connects to the live employee API.
+  const presentCount = employees.length
+  const totalCount = employees.length
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -96,22 +84,16 @@ export default function PresenciaPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {mockAttendance.map((record) => (
+                  {employees.map((emp) => (
                     <div
-                      key={record.id}
+                      key={emp.id}
                       className="flex items-center justify-between rounded-lg border border-border p-4"
                     >
                       <div>
-                        <p className="font-medium text-foreground">{record.name}</p>
-                        <p className="text-sm text-muted-foreground">{record.position}</p>
-                        {record.checkIn && (
-                          <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
-                            <span>Entrada: {record.checkIn}</span>
-                            {record.checkOut && <span>Salida: {record.checkOut}</span>}
-                          </div>
-                        )}
+                        <p className="font-medium text-foreground">{emp.name}</p>
+                        <p className="text-sm text-muted-foreground">{emp.position}</p>
                       </div>
-                      {getStatusBadge(record.status)}
+                      {getStatusBadge('present')}
                     </div>
                   ))}
                 </div>

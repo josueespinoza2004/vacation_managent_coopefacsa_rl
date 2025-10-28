@@ -5,8 +5,13 @@ import "./globals.css"
 
 
 export const metadata: Metadata = {
-  title: "Gestión de Vacaciones - Coopefacsa R.L",
+  title: "COOPEFACSA R.L - Gestión de Vacaciones",
   description: "Sistema de gestión de vacaciones para Cooperativa San Antonio",
+  icons: {
+    icon: '/logo2.png',
+    shortcut: '/logo2.png',
+    apple: '/logo2.png',
+  },
 }
 
 export default function RootLayout({
