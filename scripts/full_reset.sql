@@ -3,39 +3,38 @@
 -- Ensure gen_random_uuid() is available
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Drop existing objects so the script creates a fresh, empty schema. You (the developer)
+-- will run this when you want to fully recreate the local DB. This script creates
+-- the tables only and intentionally does NOT insert demo data.
+
 DROP TABLE IF EXISTS attendance CASCADE;
 DROP TABLE IF EXISTS vacation_requests CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
 DROP TABLE IF EXISTS departments CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
 
--- Employees (keep department text for backward compatibility)
+-- Unified employees table (contains both account/auth fields and profile/hr fields)
 CREATE TABLE employees (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text UNIQUE,
+  password_hash text,
+  role text NOT NULL DEFAULT 'user',
   name text NOT NULL,
   position text,
   department text,
+  department_id uuid NULL,
   accumulated_days numeric DEFAULT 0,
   used_days numeric DEFAULT 0,
   pending_days numeric DEFAULT 0,
   monthly_rate numeric DEFAULT 0,
+  birth_date date NULL,
+  profile_photo text NULL,
   created_at timestamptz DEFAULT now()
 );
 
--- Departments table
+-- Departments table (optional normalized table)
 CREATE TABLE departments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text UNIQUE NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-
--- Users table (accounts)
-CREATE TABLE users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email text NOT NULL UNIQUE,
-  password_hash text,
-  name text,
-  role text NOT NULL DEFAULT 'user',
   created_at timestamptz DEFAULT now()
 );
 
@@ -54,7 +53,6 @@ CREATE TABLE vacation_requests (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
 -- Attendance
 CREATE TABLE attendance (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,19 +68,12 @@ CREATE TABLE attendance (
 CREATE INDEX IF NOT EXISTS idx_vacation_employee ON vacation_requests(employee_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id);
 
--- Seed demo employees and requests
-INSERT INTO employees (id, name, position, department, accumulated_days, used_days, pending_days, monthly_rate)
-VALUES
-('11111111-1111-1111-1111-111111111111','Juan Francisco Moreno','Oficial de Crédito','Créditos',12.5,7.5,5.0,2.5),
-('22222222-2222-2222-2222-222222222222','María González','Analista','Operaciones',9.83,5.5,4.33,2.5),
-('33333333-3333-3333-3333-333333333333','Prueba Usuario','Analista',NULL,4.5,0,4.5,2.5);
-
--- Create departments from employees (if any department text exists)
+-- Create departments table and indexes (no demo data)
 INSERT INTO departments (name)
 SELECT DISTINCT department FROM employees WHERE department IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 
--- Add department_id column and populate it by name (nullable)
+-- Add department_id column to employees (nullable) and populate if departments exist
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS department_id uuid NULL;
 UPDATE employees e
 SET department_id = d.id
@@ -93,15 +84,7 @@ WHERE e.department IS NOT NULL AND e.department = d.name;
 ALTER TABLE employees
   ADD CONSTRAINT IF NOT EXISTS fk_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
 
--- Add optional user_id to employees and link to users
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_id uuid NULL;
-ALTER TABLE employees
-  ADD CONSTRAINT IF NOT EXISTS fk_employee_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+-- Indexes
+CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_email ON employees(email) WHERE email IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_user_id ON employees(user_id) WHERE user_id IS NOT NULL;
-
--- Seed demo vacation requests
-INSERT INTO vacation_requests (employee_id, start_date, end_date, days, status, reason)
-VALUES
-('11111111-1111-1111-1111-111111111111','2025-10-10','2025-10-15',5,'approved','Vacaciones programadas'),
-('22222222-2222-2222-2222-222222222222','2025-11-01','2025-11-05',5,'pending','Viaje familiar');
+-- No demo seeds: if you need demo data, create a separate `scripts/seeds_demo.sql` and run it manually.

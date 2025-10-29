@@ -22,6 +22,9 @@ export default function EmployeeCreateForm({ onSuccess, initialData, employeeId 
   const [role, setRole] = React.useState<'user' | 'admin'>('user')
   // monthlyRate removed — not needed
   const [departments, setDepartments] = React.useState<Array<{ id: string; name: string }>>([])
+  const [birthDate, setBirthDate] = React.useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -51,7 +54,16 @@ export default function EmployeeCreateForm({ onSuccess, initialData, employeeId 
     setAccumulatedDays(initialData.accumulatedDays ?? '')
     setUsedDays(initialData.usedDays ?? '')
     setPendingDays(initialData.pendingDays ?? '')
+    setBirthDate(initialData.birthDate ?? null)
+    setPreviewUrl(initialData.profilePhoto ?? null)
   }, [initialData])
+
+  // revoke preview on unmount
+  React.useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -60,10 +72,26 @@ export default function EmployeeCreateForm({ onSuccess, initialData, employeeId 
     if (!departmentId) return setError('Selecciona un área')
     setLoading(true)
     try {
+      let uploadedUrl: string | undefined = undefined
+      // if a file is selected, upload it first
+      if (selectedFile) {
+        const form = new FormData()
+        form.append('file', selectedFile)
+        const upRes = await fetch('/api/upload', { method: 'POST', body: form })
+        if (!upRes.ok) {
+          const ue = await upRes.json().catch(() => ({}))
+          throw new Error(ue?.error || `Error subiendo imagen (${upRes.status})`)
+        }
+        const upj = await upRes.json()
+        uploadedUrl = upj.url
+      }
+
       const payload: any = {
         name: name.trim(),
         position: position || undefined,
         department_id: departmentId,
+        birth_date: birthDate || undefined,
+        profile_photo: uploadedUrl || previewUrl || undefined,
       }
       // If creating a new employee, ensure account fields are provided (mandatory)
       if (!employeeId) {
@@ -113,6 +141,9 @@ export default function EmployeeCreateForm({ onSuccess, initialData, employeeId 
       setAccumulatedDays('')
       setUsedDays('')
       setPendingDays('')
+    setBirthDate(null)
+    setSelectedFile(null)
+    setPreviewUrl(null)
   // clear account fields
   setEmail('')
   setPassword('')
@@ -158,6 +189,22 @@ export default function EmployeeCreateForm({ onSuccess, initialData, employeeId 
           <label className="block text-sm font-medium mb-1">Pendientes</label>
           <Input type="number" value={pendingDays as any} onChange={(e) => setPendingDays(e.target.value === '' ? '' : Number((e.target as HTMLInputElement).value))} />
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Fecha de nacimiento</label>
+        <input type="date" value={birthDate ?? ''} onChange={(e) => setBirthDate((e.target as HTMLInputElement).value || null)} className="w-full rounded border border-border bg-background px-3 py-2" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Foto de perfil</label>
+        <input type="file" accept="image/*" onChange={(e) => {
+          const f = (e.target as HTMLInputElement).files?.[0] ?? null
+          setSelectedFile(f)
+          if (f) {
+            const u = URL.createObjectURL(f)
+            setPreviewUrl(u)
+          }
+        }} />
+        {previewUrl && <div className="mt-2"><img src={previewUrl} alt="preview" className="h-20 w-20 object-cover rounded" /></div>}
       </div>
       {/* monthlyRate field removed */}
       <div className="flex justify-end gap-2">

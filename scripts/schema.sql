@@ -8,13 +8,19 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS employees (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text UNIQUE,
+  password_hash text,
+  role text NOT NULL DEFAULT 'user',
   name text NOT NULL,
   position text,
   department text,
+  department_id uuid NULL,
   accumulated_days numeric DEFAULT 0,
   used_days numeric DEFAULT 0,
   pending_days numeric DEFAULT 0,
   monthly_rate numeric DEFAULT 0,
+  birth_date date NULL,
+  profile_photo text NULL,
   created_at timestamptz DEFAULT now()
 );
 
@@ -80,27 +86,8 @@ CREATE INDEX IF NOT EXISTS idx_vacation_employee ON vacation_requests(employee_i
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id);
 
 -- Users table and link from employees (optional user accounts)
-CREATE TABLE IF NOT EXISTS users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email text NOT NULL UNIQUE,
-  password_hash text,
-  name text,
-  role text NOT NULL DEFAULT 'user',
-  created_at timestamptz DEFAULT now()
-);
+-- No separate `users` table: accounts are stored in `employees` (email/password_hash/role).
+-- If you previously relied on a `users` table, please migrate any references to `employees`.
 
--- Add user_id column to employees (nullable) and FK to users
-ALTER TABLE employees
-  ADD COLUMN IF NOT EXISTS user_id uuid NULL;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'fk_employee_user'
-  ) THEN
-    ALTER TABLE employees
-      ADD CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
-  END IF;
-END$$;
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_user_id ON employees(user_id) WHERE user_id IS NOT NULL;
+-- Index for email uniqueness (only when email present)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_email ON employees(email) WHERE email IS NOT NULL;

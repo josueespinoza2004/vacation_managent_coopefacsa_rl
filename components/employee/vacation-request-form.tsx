@@ -20,22 +20,43 @@ interface VacationRequestFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   accumulatedDays: number
-  onSubmit: (data: { startDate: string; endDate: string; days: number }) => void
+  // onSubmit should return a Promise that resolves truthy on success, falsy on failure
+  onSubmit: (data: { startDate: string; endDate: string; days: number }) => Promise<boolean | void>
 }
 
 export function VacationRequestForm({ open, onOpenChange, accumulatedDays, onSubmit }: VacationRequestFormProps) {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [requestedDays, setRequestedDays] = useState(1)
+  // requestedDays can be a number or empty string while editing to avoid passing NaN to the input value
+  const [requestedDays, setRequestedDays] = useState<number | ''>(1)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({ startDate, endDate, days: requestedDays })
-    onOpenChange(false)
-    // Reset form
-    setStartDate("")
-    setEndDate("")
-    setRequestedDays(1)
+    // validate requestedDays before submitting
+    if (requestedDays === '' || Number.isNaN(requestedDays) || Number(requestedDays) <= 0) {
+      // simple UI feedback; you can replace with better UI handling
+      alert('Ingresa una cantidad válida de días solicitados')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const result = await onSubmit({ startDate, endDate, days: Number(requestedDays) })
+      // only close the dialog and reset if handler indicates success (truthy) or undefined (assume success)
+      if (result === false) {
+        // keep dialog open for user to fix
+        return
+      }
+      onOpenChange(false)
+      // Reset form
+      setStartDate("")
+      setEndDate("")
+      setRequestedDays(1)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -69,20 +90,24 @@ export function VacationRequestForm({ open, onOpenChange, accumulatedDays, onSub
                 min={0.5}
                 max={accumulatedDays}
                 step={0.5}
-                value={requestedDays}
-                onChange={(e) => setRequestedDays(Number.parseFloat(e.target.value))}
+                // pass a safe value to the input: convert '' to '' and numbers to string/number
+                value={requestedDays === '' ? '' : requestedDays as any}
+                onChange={(e) => {
+                  const v = (e.target as HTMLInputElement).value
+                  setRequestedDays(v === '' ? '' : Number.parseFloat(v))
+                }}
                 required
               />
               <p className="text-xs text-muted-foreground">Días disponibles: {accumulatedDays}</p>
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancelar
             </Button>
-            <Button type="submit" className="bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button type="submit" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={submitting}>
               <Calendar className="mr-2 h-4 w-4" />
-              Enviar Solicitud
+              {submitting ? 'Enviando...' : 'Enviar Solicitud'}
             </Button>
           </DialogFooter>
         </form>

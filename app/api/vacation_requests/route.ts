@@ -23,20 +23,27 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    // debug log to help diagnose silent failures during development
+    console.log('[api/vacation_requests] POST body:', JSON.stringify(body));
     const isoDate = (s: string) => !Number.isNaN(Date.parse(s));
     const schema = z.object({
       employee_id: z.string().uuid(),
       start_date: z.string().refine(isoDate, { message: 'start_date must be a valid ISO date string' }),
       end_date: z.string().refine(isoDate, { message: 'end_date must be a valid ISO date string' }),
-      days: z.number().int().positive(),
+      // allow fractional days (e.g., 0.5) for half-days; must be positive
+      days: z.number().positive(),
       status: z.string().optional(),
       reason: z.string().optional(),
     });
     const p = schema.safeParse(body);
-    if (!p.success) return NextResponse.json({ error: p.error.format() }, { status: 400 });
+    if (!p.success) {
+      console.error('[api/vacation_requests] validation error:', p.error.format());
+      return NextResponse.json({ error: p.error.format() }, { status: 400 });
+    }
     const created = await createVacationRequest(p.data);
     return NextResponse.json(created, { status: 201 });
   } catch (err: any) {
+    console.error('[api/vacation_requests] server error:', err);
     return NextResponse.json({ error: err.message || 'Error creating request' }, { status: 500 });
   }
 }

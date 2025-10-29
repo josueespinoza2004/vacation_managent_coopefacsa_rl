@@ -62,15 +62,52 @@ export async function createEmployee(data: {
   pending_days?: number;
   monthly_rate?: number;
 }) {
-  const { name, position, department, accumulated_days = 0, used_days = 0, pending_days = 0, monthly_rate = 0 } = data;
-  // Insert only department_id reference (don't maintain separate department text)
-  const cols = ['name','position','accumulated_days','used_days','pending_days','monthly_rate'];
+  const {
+    name,
+    position,
+    department,
+    department_id = null,
+    accumulated_days = 0,
+    used_days = 0,
+    pending_days = 0,
+    monthly_rate = 0,
+    email = null,
+    password_hash = null,
+    role = 'user',
+    birth_date = null,
+    profile_photo = null,
+  } = data as any;
+
+  // Build insert dynamically for allowed fields
+  const cols: string[] = ['name', 'position', 'accumulated_days', 'used_days', 'pending_days', 'monthly_rate'];
   const vals: any[] = [name, position, accumulated_days, used_days, pending_days, monthly_rate];
-  if (data.department_id) {
+
+  if (department_id) {
     cols.push('department_id');
-    vals.push(data.department_id);
+    vals.push(department_id);
   }
-  const placeholders = vals.map((_, i) => `$${i+1}`).join(',');
+  if (email) {
+    cols.push('email');
+    vals.push(email);
+  }
+  if (password_hash) {
+    cols.push('password_hash');
+    vals.push(password_hash);
+  }
+  if (role) {
+    cols.push('role');
+    vals.push(role);
+  }
+  if (birth_date) {
+    cols.push('birth_date');
+    vals.push(birth_date);
+  }
+  if (profile_photo) {
+    cols.push('profile_photo');
+    vals.push(profile_photo);
+  }
+
+  const placeholders = vals.map((_, i) => `$${i + 1}`).join(',');
   const text = `INSERT INTO employees (${cols.join(',')}) VALUES (${placeholders}) RETURNING *`;
   const { rows } = await query(text, vals);
   return rows[0] ? normalizeEmployeeRow(rows[0]) : null;
@@ -79,6 +116,7 @@ export async function createEmployee(data: {
 function normalizeEmployeeRow(r: any) {
   return {
     id: r.id,
+    email: r.email ?? null,
     name: r.name,
     position: r.position,
     department: r.department_name ?? r.department ?? null,
@@ -90,6 +128,9 @@ function normalizeEmployeeRow(r: any) {
     pendingDays: r.pending_days !== null && r.pending_days !== undefined ? Number(r.pending_days) : r.pending_days,
     monthlyRate: r.monthly_rate !== null && r.monthly_rate !== undefined ? Number(r.monthly_rate) : r.monthly_rate,
     createdAt: r.created_at,
+    role: r.role ?? 'user',
+    birthDate: r.birth_date ?? null,
+    profilePhoto: r.profile_photo ?? null,
   };
 }
 
@@ -259,7 +300,7 @@ export async function deleteDepartment(id: string) {
   return rows[0] || null;
 }
 
-export async function updateEmployee(id: string, data: { name?: string; position?: string; department?: string; department_id?: string; accumulated_days?: number; used_days?: number; pending_days?: number; monthly_rate?: number; status?: string }) {
+export async function updateEmployee(id: string, data: { name?: string; position?: string; department?: string; department_id?: string; accumulated_days?: number; used_days?: number; pending_days?: number; monthly_rate?: number; status?: string; email?: string; password_hash?: string | null; role?: string; birth_date?: string | null; profile_photo?: string | null }) {
   const set: string[] = [];
   const params: any[] = [];
   let idx = 1;
@@ -284,6 +325,12 @@ export async function updateEmployee(id: string, data: { name?: string; position
   if (data.pending_days !== undefined) push('pending_days', data.pending_days);
   if (data.monthly_rate !== undefined) push('monthly_rate', data.monthly_rate);
   if (data.status !== undefined) push('status', data.status);
+  // auth/profile fields
+  if (data.email !== undefined) push('email', data.email);
+  if (data.password_hash !== undefined) push('password_hash', data.password_hash);
+  if (data.role !== undefined) push('role', data.role);
+  if (data.birth_date !== undefined) push('birth_date', data.birth_date);
+  if (data.profile_photo !== undefined) push('profile_photo', data.profile_photo);
   if (set.length === 0) return await getEmployeeById(id);
   const text = `UPDATE employees SET ${set.join(', ')} WHERE id = $${idx} RETURNING *`;
   params.push(id);
@@ -296,34 +343,36 @@ export async function deleteEmployee(id: string) {
   return rows[0] || null;
 }
 
-// --- Users / Auth helpers ---
+// --- Users / Auth helpers (unified with employees table) ---
 export async function createUser(data: { email: string; password_hash?: string | null; role?: string; name?: string }) {
+  // Creates an account as an employees row. Returns the created employee record.
   const { email, password_hash = null, role = 'user', name = null } = data;
   const { rows } = await query(
-    'INSERT INTO users (email, password_hash, role, name) VALUES ($1,$2,$3,$4) RETURNING *',
+    'INSERT INTO employees (email, password_hash, role, name) VALUES ($1,$2,$3,$4) RETURNING *',
     [email, password_hash, role, name]
   );
   return rows[0] || null;
 }
 
 export async function getUserByEmail(email: string) {
-  const { rows } = await query('SELECT * FROM users WHERE email = $1', [email]);
+  const { rows } = await query('SELECT * FROM employees WHERE email = $1', [email]);
   return rows[0] || null;
 }
 
 export async function getUserById(id: string) {
-  const { rows } = await query('SELECT * FROM users WHERE id = $1', [id]);
+  const { rows } = await query('SELECT * FROM employees WHERE id = $1', [id]);
   return rows[0] || null;
 }
 
 export async function linkEmployeeToUser(employeeId: string, userId: string) {
-  await query('UPDATE employees SET user_id = $1 WHERE id = $2', [userId, employeeId]);
+  // Legacy no-op for compatibility: in the unified schema accounts live on employees.
+  // Prefer using updateEmployee to set email/password_hash on an existing employee.
   return await getEmployeeById(employeeId);
 }
 
 export async function getEmployeeByUserId(userId: string) {
-  const { rows } = await query('SELECT e.*, d.name AS department_name FROM employees e LEFT JOIN departments d ON e.department_id = d.id WHERE e.user_id = $1', [userId]);
-  return rows[0] ? normalizeEmployeeRow(rows[0]) : null;
+  // Backwards-compatible: userId is the same as employee id in unified schema
+  return await getEmployeeById(userId);
 }
 
 // --- Vacation balance calculation ---

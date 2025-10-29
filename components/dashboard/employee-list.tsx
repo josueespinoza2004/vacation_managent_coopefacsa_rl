@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,7 @@ interface Employee {
   accumulatedDays?: number
   usedDays?: number
   pendingDays?: number
+  profilePhoto?: string | null
 }
 
 
@@ -164,10 +165,12 @@ export function EmployeeList() {
               className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/50"
             >
               <div className="flex items-center gap-4">
-                <Avatar className="h-12 w-12 border-2 border-primary">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {getInitials(employee.name)}
-                  </AvatarFallback>
+                <Avatar className="h-12 w-12 border-2 border-primary group overflow-hidden">
+                  {employee.profilePhoto ? (
+                    <AvatarImage src={employee.profilePhoto} alt={employee.name} className="object-cover size-full transition-transform duration-200 transform group-hover:scale-110" />
+                  ) : (
+                    <AvatarFallback className="bg-primary text-primary-foreground">{getInitials(employee.name)}</AvatarFallback>
+                  )}
                 </Avatar>
                 <div>
                   <p className="font-medium text-foreground">{employee.name}</p>

@@ -80,7 +80,7 @@ export default function SolicitudesPage() {
     try {
       if (!employeeId) {
         console.error('Empleado no vinculado.');
-        return;
+        return false;
       }
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const res = await fetch('/api/vacation_requests', {
@@ -89,8 +89,9 @@ export default function SolicitudesPage() {
         body: JSON.stringify({ employee_id: employeeId, start_date: data.startDate, end_date: data.endDate, days: data.days }),
       });
       if (!res.ok) {
-        console.error('Error creando solicitud', await res.text());
-        return;
+        const text = await res.text().catch(() => '')
+        console.error('Error creando solicitud', text);
+        return false;
       }
       const created = await res.json();
       // append to UI list
@@ -111,8 +112,10 @@ export default function SolicitudesPage() {
         const b = await balRes.json();
         setAvailableDays(Number(b.available ?? 0));
       }
+      return true;
     } catch (err) {
       console.error(err);
+      return false;
     }
   }
 
