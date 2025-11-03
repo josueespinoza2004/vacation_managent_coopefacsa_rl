@@ -196,9 +196,10 @@ export async function createVacationRequest(data: {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`;
   const { rows } = await query(text, [employee_id, start_date, end_date, days, status, type, reason, requested_by]);
 
-  // If request is created as pending, increment employee.pending_days
+  // If request is created as pending, consume from employee.pending_days (pending is an available pool)
+  // We decrement pending_days by the requested days (but never below 0).
   if (status === 'pending') {
-    await query('UPDATE employees SET pending_days = COALESCE(pending_days,0) + $1 WHERE id = $2', [days, employee_id]);
+    await query('UPDATE employees SET pending_days = GREATEST(COALESCE(pending_days,0) - $1, 0) WHERE id = $2', [days, employee_id]);
   }
 
   // If created already approved (e.g., birthday), adjust used_days
@@ -223,12 +224,14 @@ export async function updateVacationRequestStatus(id: string, status: string, de
   const { rows } = await query(text, [status, decided_by || null, id]);
 
   // adjust employee counters depending on transition
+  // NOTE: pending represents an available pool that is consumed when creating a request.
+  // Therefore on transitions we must restore or move amounts appropriately:
   if (currentStatus === 'pending' && status === 'approved') {
-    // pending -> approved: decrement pending, increment used
-    await query('UPDATE employees SET pending_days = GREATEST(COALESCE(pending_days,0) - $1,0), used_days = COALESCE(used_days,0) + $1 WHERE id = $2', [days, employeeId]);
+    // pending -> approved: the pending pool was already decremented at creation, so only increment used
+    await query('UPDATE employees SET used_days = COALESCE(used_days,0) + $1 WHERE id = $2', [days, employeeId]);
   } else if (currentStatus === 'pending' && status === 'rejected') {
-    // pending -> rejected: decrement pending
-    await query('UPDATE employees SET pending_days = GREATEST(COALESCE(pending_days,0) - $1,0) WHERE id = $2', [days, employeeId]);
+    // pending -> rejected: release back to pending pool
+    await query('UPDATE employees SET pending_days = COALESCE(pending_days,0) + $1 WHERE id = $2', [days, employeeId]);
   } else if (currentStatus === 'approved' && status !== 'approved') {
     // approved -> not approved: rollback used_days (edge case)
     await query('UPDATE employees SET used_days = GREATEST(COALESCE(used_days,0) - $1,0) WHERE id = $2', [days, employeeId]);
@@ -392,7 +395,13 @@ export async function getVacationBalance(employeeId: string) {
   const used = emp.usedDays !== null && emp.usedDays !== undefined ? Number(emp.usedDays) : 0;
   const pending = emp.pendingDays !== null && emp.pendingDays !== undefined ? Number(emp.pendingDays) : 0;
 
-  const totalAvailable = Number((accumulated + accruedByTime - used - pending).toFixed(2));
+  // Two metrics provided for clarity:
+  // 1) availableIgnoringPending: accumulated + accruedByTime - used (does NOT include pending)
+  // 2) available: the value shown to employees in the UI — per product decision this will reflect
+  //    the `pending` pool only (i.e., Días disponibles = pending_days). This avoids the confusion
+  //    when accumulated/used numbers are shown separately but employees expect 'Disponibles' == pending.
+  const availableIgnoringPending = Number((accumulated + accruedByTime - used).toFixed(2));
+  const totalAvailable = Number((pending).toFixed(2));
 
   return {
     employeeId: emp.id,
@@ -400,7 +409,10 @@ export async function getVacationBalance(employeeId: string) {
     accruedByTime,
     used,
     pending,
+    // `available` is the value the UI shows as "Días disponibles" per your request (pending only)
     available: totalAvailable,
+    // keep an alternative in case other parts of the app need the old semantic
+    availableIgnoringPending,
     monthlyRate,
     monthsElapsed,
   };

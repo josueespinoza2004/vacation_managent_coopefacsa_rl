@@ -84,32 +84,41 @@ export function VacationRequestForm({ open, onOpenChange, accumulatedDays, onSub
             </div>
             <div className="space-y-2">
               <Label htmlFor="days">Días solicitados</Label>
+              {/** Always render the input so user can see/enter days. Client-side validate against available days
+               * and disable submit when not enough days. The server also enforces the guard.
+               */}
               <Input
                 id="days"
                 type="number"
-                min={0.5}
-                max={accumulatedDays}
+                min={Number(accumulatedDays) >= 0.5 ? 0.5 : 0}
                 step={0.5}
                 // pass a safe value to the input: convert '' to '' and numbers to string/number
-                value={requestedDays === '' ? '' : requestedDays as any}
+                value={requestedDays === '' ? '' : (requestedDays as any)}
                 onChange={(e) => {
                   const v = (e.target as HTMLInputElement).value
                   setRequestedDays(v === '' ? '' : Number.parseFloat(v))
                 }}
                 required
               />
+
               <p className="text-xs text-muted-foreground">Días disponibles: {accumulatedDays}</p>
+
+              {/* Client-side balance validation */}
+              {Number.isFinite(Number(accumulatedDays)) && Number(accumulatedDays) <= 0 && (
+                <div className="text-sm text-red-600">No tienes días disponibles para solicitar.</div>
+              )}
+              {/* debug info removed */}
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button type="submit" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={submitting}>
-              <Calendar className="mr-2 h-4 w-4" />
-              {submitting ? 'Enviando...' : 'Enviar Solicitud'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={submitting}>
+                <Calendar className="mr-2 h-4 w-4" />
+                {submitting ? 'Enviando...' : 'Enviar Solicitud'}
+              </Button>
+            </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

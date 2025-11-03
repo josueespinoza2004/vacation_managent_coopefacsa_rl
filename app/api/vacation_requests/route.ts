@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
-import { getAllVacationRequests, getVacationRequestsByEmployee, createVacationRequest, updateVacationRequestStatus } from '@/lib/db';
+import { getAllVacationRequests, getVacationRequestsByEmployee, createVacationRequest, updateVacationRequestStatus, getVacationBalance } from '@/lib/db';
 
 const SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || 'dev-secret';
 
@@ -23,8 +23,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // debug log to help diagnose silent failures during development
-    console.log('[api/vacation_requests] POST body:', JSON.stringify(body));
+  // removed debug log
     const isoDate = (s: string) => !Number.isNaN(Date.parse(s));
     const schema = z.object({
       employee_id: z.string().uuid(),
@@ -40,6 +39,14 @@ export async function POST(request: Request) {
       console.error('[api/vacation_requests] validation error:', p.error.format());
       return NextResponse.json({ error: p.error.format() }, { status: 400 });
     }
+    // server-side guard: ensure employee has enough available days
+    const bal = await getVacationBalance(p.data.employee_id);
+    const available = bal?.available ?? 0;
+    if (Number(p.data.days) > Number(available)) {
+      console.warn('[api/vacation_requests] insufficient days:', { requested: p.data.days, available });
+      return NextResponse.json({ error: 'No tienes suficientes días disponibles para esta solicitud', available }, { status: 400 });
+    }
+
     const created = await createVacationRequest(p.data);
     return NextResponse.json(created, { status: 201 });
   } catch (err: any) {

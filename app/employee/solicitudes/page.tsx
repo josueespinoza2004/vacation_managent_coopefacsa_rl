@@ -35,15 +35,25 @@ export default function SolicitudesPage() {
         const empRes = await fetch('/api/auth/employee', { headers: { Authorization: `Bearer ${token}` } });
         if (!empRes.ok) return;
         const empJson = await empRes.json();
-        const emp = empJson?.employee;
+  const emp = empJson?.employee;
+  // debug logs removed
         if (!emp) return;
         setEmployeeId(emp.id);
         // load balance
         const balRes = await fetch(`/api/vacations/balance?employee_id=${emp.id}`);
-        if (balRes.ok) {
-          const b = await balRes.json();
-          setAvailableDays(Number(b.available ?? 0));
-        }
+          try {
+            if (balRes.ok) {
+              const b = await balRes.json();
+              const clamped = Number.isFinite(Number(b.availableNonNegative ?? b.available))
+                ? Number(b.availableNonNegative ?? Math.max(0, Number(b.available ?? 0)))
+                : 0;
+              setAvailableDays(clamped);
+            } else {
+              setAvailableDays(0);
+            }
+          } catch (err) {
+            setAvailableDays(0);
+          }
         // load requests
         const reqRes = await fetch(`/api/vacation_requests?employee_id=${emp.id}`);
         if (reqRes.ok) {
@@ -107,11 +117,15 @@ export default function SolicitudesPage() {
         ...prev,
       ]);
       // refresh balance
-      const balRes = await fetch(`/api/vacations/balance?employee_id=${employeeId}`);
-      if (balRes.ok) {
-        const b = await balRes.json();
-        setAvailableDays(Number(b.available ?? 0));
-      }
+        // refresh balance (clamped)
+        const balRes = await fetch(`/api/vacations/balance?employee_id=${employeeId}`);
+        if (balRes.ok) {
+          const b = await balRes.json();
+          const clamped = Number.isFinite(Number(b.availableNonNegative ?? b.available))
+            ? Number(b.availableNonNegative ?? Math.max(0, Number(b.available ?? 0)))
+            : 0;
+          setAvailableDays(clamped);
+        }
       return true;
     } catch (err) {
       console.error(err);

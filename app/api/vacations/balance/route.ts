@@ -9,9 +9,11 @@ export async function GET(request: Request) {
     const schema = z.string().uuid();
     const p = schema.safeParse(employeeId);
     if (!p.success) return NextResponse.json({ error: 'employee_id required' }, { status: 400 });
-    const bal = await getVacationBalance(employeeId as string);
-    if (!bal) return NextResponse.json({ error: 'Empleado no encontrado' }, { status: 404 });
-    return NextResponse.json(bal);
+  const bal = await getVacationBalance(employeeId as string);
+  if (!bal) return NextResponse.json({ error: 'Empleado no encontrado' }, { status: 404 });
+  // include a non-negative available field for clients that prefer to never show negative days
+  const availableNonNegative = Number.isFinite(Number(bal.available)) ? Math.max(0, Number(bal.available)) : 0;
+  return NextResponse.json({ ...bal, availableNonNegative });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Error calculating balance' }, { status: 500 });
   }

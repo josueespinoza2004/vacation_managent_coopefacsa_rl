@@ -61,9 +61,10 @@ export default function EmployeeDashboard() {
     )
   }
 
-  const handleSubmitRequest = (data: { startDate: string; endDate: string; days: number }) => {
-    console.log("[v0] Nueva solicitud:", data)
-    // Here you would send the request to your backend
+  const handleSubmitRequest = async (data: { startDate: string; endDate: string; days: number }) => {
+    // Minimal implementation to satisfy component contract during dashboard usage.
+    // The full POST flow is implemented in /employee/solicitudes page.
+    return true;
   }
 
   return (
