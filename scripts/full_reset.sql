@@ -1,12 +1,19 @@
--- Schema for coopefacsa vacation system
--- Tables: employees, vacation_requests, attendance
--- Ensure pgcrypto for gen_random_uuid
+-- Full reset: drop existing tables, recreate schema, and seed demo data.
+-- WARNING: This file destroys existing data. Run only if you want a fresh database.
+-- Ensure gen_random_uuid() is available
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Schema for coopefacsa vacation system
--- Tables: employees, departments, vacation_requests, attendance
+-- Drop existing objects so the script creates a fresh, empty schema. You (the developer)
+-- will run this when you want to fully recreate the local DB. This script creates
+-- the tables only and intentionally does NOT insert demo data.
 
-CREATE TABLE IF NOT EXISTS employees (
+DROP TABLE IF EXISTS attendance CASCADE;
+DROP TABLE IF EXISTS vacation_requests CASCADE;
+DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS departments CASCADE;
+
+-- Unified employees table (contains both account/auth fields and profile/hr fields)
+CREATE TABLE employees (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email text UNIQUE,
   password_hash text,
@@ -25,38 +32,14 @@ CREATE TABLE IF NOT EXISTS employees (
 );
 
 -- Departments table (optional normalized table)
-CREATE TABLE IF NOT EXISTS departments (
+CREATE TABLE departments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text UNIQUE NOT NULL,
   created_at timestamptz DEFAULT now()
 );
 
--- Populate departments from existing employees.department (no-op if none)
-INSERT INTO departments (name)
-SELECT DISTINCT department FROM employees WHERE department IS NOT NULL
-ON CONFLICT (name) DO NOTHING;
-
--- Add department_id column to employees if missing and populate it by joining departments
-ALTER TABLE employees
-  ADD COLUMN IF NOT EXISTS department_id uuid NULL;
-
-UPDATE employees e
-SET department_id = d.id
-FROM departments d
-WHERE e.department IS NOT NULL AND e.department = d.name;
-
--- Add foreign key constraint linking employees.department_id -> departments.id if not exists
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'fk_department'
-  ) THEN
-    ALTER TABLE employees
-      ADD CONSTRAINT fk_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
-  END IF;
-END$$;
-
-CREATE TABLE IF NOT EXISTS vacation_requests (
+-- Vacation requests
+CREATE TABLE vacation_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   start_date date NOT NULL,
@@ -70,8 +53,8 @@ CREATE TABLE IF NOT EXISTS vacation_requests (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
-CREATE TABLE IF NOT EXISTS attendance (
+-- Attendance
+CREATE TABLE attendance (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   date date NOT NULL,
@@ -85,9 +68,23 @@ CREATE TABLE IF NOT EXISTS attendance (
 CREATE INDEX IF NOT EXISTS idx_vacation_employee ON vacation_requests(employee_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id);
 
--- Users table and link from employees (optional user accounts)
--- No separate `users` table: accounts are stored in `employees` (email/password_hash/role).
--- If you previously relied on a `users` table, please migrate any references to `employees`.
+-- Create departments table and indexes (no demo data)
+INSERT INTO departments (name)
+SELECT DISTINCT department FROM employees WHERE department IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
 
--- Index for email uniqueness (only when email present)
+-- Add department_id column to employees (nullable) and populate if departments exist
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS department_id uuid NULL;
+UPDATE employees e
+SET department_id = d.id
+FROM departments d
+WHERE e.department IS NOT NULL AND e.department = d.name;
+
+-- Add foreign key constraint linking employees.department_id -> departments.id
+ALTER TABLE employees
+  ADD CONSTRAINT IF NOT EXISTS fk_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
+
+-- Indexes
 CREATE UNIQUE INDEX IF NOT EXISTS ux_employees_email ON employees(email) WHERE email IS NOT NULL;
+
+-- No demo seeds: if you need demo data, create a separate `scripts/seeds_demo.sql` and run it manually.

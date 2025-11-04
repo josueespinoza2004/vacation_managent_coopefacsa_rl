@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Search, TrendingUp, TrendingDown } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface Employee {
   id: string
@@ -18,67 +18,32 @@ interface Employee {
   monthlyRate: number
 }
 
-const mockEmployees: Employee[] = [
-  {
-    id: "1",
-    name: "Juan Francisco Moreno",
-    position: "Oficial de Crédito",
-    department: "Créditos",
-    accumulatedDays: 12.5,
-    usedDays: 7.5,
-    pendingDays: 5.0,
-    monthlyRate: 2.5,
-  },
-  {
-    id: "2",
-    name: "Norgen Antonio Polanco",
-    position: "Oficial de Crédito",
-    department: "Créditos",
-    accumulatedDays: 9.83,
-    usedDays: 5.5,
-    pendingDays: 4.33,
-    monthlyRate: 2.5,
-  },
-  {
-    id: "3",
-    name: "Esther Vizcaíno",
-    position: "Directora RRHH",
-    department: "Recursos Humanos",
-    accumulatedDays: 15.0,
-    usedDays: 8.0,
-    pendingDays: 7.0,
-    monthlyRate: 2.5,
-  },
-  {
-    id: "4",
-    name: "Pedro Damián Salgado",
-    position: "Analista Financiero",
-    department: "Finanzas",
-    accumulatedDays: 8.0,
-    usedDays: 3.5,
-    pendingDays: 4.5,
-    monthlyRate: 2.5,
-  },
-  {
-    id: "5",
-    name: "Diego Jovial",
-    position: "Desarrollador",
-    department: "Tecnología",
-    accumulatedDays: 11.0,
-    usedDays: 6.0,
-    pendingDays: 5.0,
-    monthlyRate: 2.5,
-  },
-]
+// employees will be loaded from the API
 
 export default function PanelPage() {
   const [searchTerm, setSearchTerm] = useState("")
+  const [employees, setEmployees] = useState<Employee[]>([])
 
-  const filteredEmployees = mockEmployees.filter(
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const res = await fetch('/api/employees', { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+        if (!res.ok) return;
+        const rows = await res.json();
+        // API normalizes employee fields
+        setEmployees(rows);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [])
+
+  const filteredEmployees = employees.filter(
     (emp) =>
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.department.toLowerCase().includes(searchTerm.toLowerCase()),
+      emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.department || '').toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   return (

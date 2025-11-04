@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Home, Calendar, FileText, Clock, Users, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import { useEffect, useState } from "react"
 
 interface SidebarProps {
   userRole: "admin" | "employee"
@@ -12,6 +13,27 @@ interface SidebarProps {
 
 export function Sidebar({ userRole }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const [userName, setUserName] = useState<string | null>(null)
+
+  useEffect(() => {
+    // try to load the current logged user from the auth endpoint
+    ;(async () => {
+      try {
+        if (typeof window === 'undefined') return
+        const token = localStorage.getItem('token')
+        if (!token) return
+        const res = await fetch('/api/auth/employee', { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) return
+        const j = await res.json().catch(() => ({}))
+        const emp = j?.employee
+        if (emp && emp.name) setUserName(emp.name)
+      } catch (e) {
+        // ignore
+      }
+    })()
+  }, [])
 
   const adminLinks = [
     { href: "/admin", label: "Inicio", icon: Home },
@@ -75,9 +97,9 @@ export function Sidebar({ userRole }: SidebarProps) {
         <div className="border-t border-border p-4">
           <div className="mb-3 rounded-lg bg-muted p-3">
             <p className="text-xs text-muted-foreground">{userRole === "admin" ? "Recursos Humanos" : "Personal"}</p>
-            <p className="text-sm font-medium">Hamil Hayala</p>
+            <p className="text-sm font-medium">{userName ?? 'Sin sesión'}</p>
           </div>
-          <button className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10">
+          <button onClick={() => { if (typeof window !== 'undefined') { localStorage.removeItem('token'); router.push('/login') } }} className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10">
             <LogOut className="h-5 w-5" />
             Cerrar Sesión
           </button>

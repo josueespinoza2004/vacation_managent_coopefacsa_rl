@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar, Plus } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { VacationRequestForm } from "@/components/employee/vacation-request-form"
 
 interface Request {
@@ -18,45 +18,63 @@ interface Request {
   approvedDays?: number
 }
 
-const mockRequests: Request[] = [
-  {
-    id: "1",
-    startDate: "10/05/2025",
-    endDate: "14/05/2025",
-    days: 5,
-    status: "pending",
-    requestDate: "01/05/2025",
-  },
-  {
-    id: "2",
-    startDate: "01/04/2025",
-    endDate: "03/04/2025",
-    days: 2.5,
-    status: "approved",
-    requestDate: "20/03/2025",
-    approvedDays: 2.5,
-  },
-  {
-    id: "3",
-    startDate: "15/03/2025",
-    endDate: "18/03/2025",
-    days: 4,
-    status: "approved",
-    requestDate: "01/03/2025",
-    approvedDays: 3,
-  },
-  {
-    id: "4",
-    startDate: "10/02/2025",
-    endDate: "12/02/2025",
-    days: 3,
-    status: "rejected",
-    requestDate: "25/01/2025",
-  },
-]
+// initial empty list — will be loaded from the API for the current user
 
 export default function SolicitudesPage() {
   const [requestFormOpen, setRequestFormOpen] = useState(false)
+  const [employeeId, setEmployeeId] = useState<string | null>(null)
+  const [availableDays, setAvailableDays] = useState<number>(12.5)
+  const [requests, setRequests] = useState<Request[]>([])
+
+  useEffect(() => {
+    // fetch linked employee for current user and then load requests and balance
+    (async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) return;
+        const empRes = await fetch('/api/auth/employee', { headers: { Authorization: `Bearer ${token}` } });
+        if (!empRes.ok) return;
+        const empJson = await empRes.json();
+  const emp = empJson?.employee;
+  // debug logs removed
+        if (!emp) return;
+        setEmployeeId(emp.id);
+        // load balance
+        const balRes = await fetch(`/api/vacations/balance?employee_id=${emp.id}`);
+          try {
+            if (balRes.ok) {
+              const b = await balRes.json();
+              const clamped = Number.isFinite(Number(b.availableNonNegative ?? b.available))
+                ? Number(b.availableNonNegative ?? Math.max(0, Number(b.available ?? 0)))
+                : 0;
+              setAvailableDays(clamped);
+            } else {
+              setAvailableDays(0);
+            }
+          } catch (err) {
+            setAvailableDays(0);
+          }
+        // load requests
+        const reqRes = await fetch(`/api/vacation_requests?employee_id=${emp.id}`);
+        if (reqRes.ok) {
+          const rs = await reqRes.json();
+          // map to local Request shape
+          const mapped: Request[] = rs.map((r: any) => ({
+            id: r.id,
+            startDate: r.start_date,
+            endDate: r.end_date,
+            days: Number(r.days),
+            status: r.status,
+            requestDate: r.created_at,
+            approvedDays: r.status === 'approved' ? Number(r.days) : undefined,
+          }));
+          setRequests(mapped);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
 
   const getStatusBadge = (status: Request["status"]) => {
     const variants = {
@@ -68,8 +86,51 @@ export default function SolicitudesPage() {
     return <Badge className={variant.className}>{variant.label}</Badge>
   }
 
-  const handleSubmitRequest = (data: { startDate: string; endDate: string; days: number }) => {
-    console.log("[v0] Nueva solicitud:", data)
+  const handleSubmitRequest = async (data: { startDate: string; endDate: string; days: number }) => {
+    try {
+      if (!employeeId) {
+        console.error('Empleado no vinculado.');
+        return false;
+      }
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch('/api/vacation_requests', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ employee_id: employeeId, start_date: data.startDate, end_date: data.endDate, days: data.days }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        console.error('Error creando solicitud', text);
+        return false;
+      }
+      const created = await res.json();
+      // append to UI list
+      setRequests((prev) => [
+        {
+          id: created.id,
+          startDate: created.start_date,
+          endDate: created.end_date,
+          days: Number(created.days),
+          status: created.status,
+          requestDate: created.created_at,
+        },
+        ...prev,
+      ]);
+      // refresh balance
+        // refresh balance (clamped)
+        const balRes = await fetch(`/api/vacations/balance?employee_id=${employeeId}`);
+        if (balRes.ok) {
+          const b = await balRes.json();
+          const clamped = Number.isFinite(Number(b.availableNonNegative ?? b.available))
+            ? Number(b.availableNonNegative ?? Math.max(0, Number(b.available ?? 0)))
+            : 0;
+          setAvailableDays(clamped);
+        }
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   }
 
   return (
@@ -92,7 +153,7 @@ export default function SolicitudesPage() {
           </div>
 
           <div className="space-y-4">
-            {mockRequests.map((request) => (
+            {requests.map((request) => (
               <Card key={request.id}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
@@ -131,7 +192,7 @@ export default function SolicitudesPage() {
       <VacationRequestForm
         open={requestFormOpen}
         onOpenChange={setRequestFormOpen}
-        accumulatedDays={12.5}
+        accumulatedDays={availableDays}
         onSubmit={handleSubmitRequest}
       />
     </div>
